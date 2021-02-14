@@ -1,14 +1,18 @@
 //Server
 
 #include <iostream>
-#include "drone_sockets.hpp"
+//#include "drone_sockets.hpp"
 #include <thread>
+#include "NetServer.hpp"
 
 
 int main() {
 
-    NetStartServer();
+    //NetStartServer();
+    NetServer * srv = new NetServer();
+    
     bool exitflag = false;
+
     while (!exitflag)
     {
         char n;
@@ -19,10 +23,12 @@ int main() {
         std::cin >> n;
         if (n == 'q') 
         {
-            NetStopServer();
+            //NetStopServer();
+
             exitflag = true;
         }
     }
+    delete (srv);
     
     return 0;
 }
