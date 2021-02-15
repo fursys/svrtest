@@ -1,22 +1,54 @@
 #include "MSP_Packet.hpp"
+#include <cstring>
 
 MSP_Packet::MSP_Packet ()
 {
-    status = MSP_MSG_STATUS_NEW;
     ptr = nullptr;
 }
 
-MSP_Packet::MSP_Packet (int payloadSize)
+MSP_Packet::MSP_Packet (uint16_t cmd, uint8_t * payload, uint16_t payloadSize, mspMessageType_e msgType)
 {
-    ptr = new uint8_t [buffsize + 9];
-    payload_begin = ptr + 8;
-    payload_end = ptr + 7 + buffsize;
-    crc_ptr = payload_end + 1;
+    ptr = new uint8_t [payloadSize + 9];
+    ptr[0] = '$';
+    ptr[1] = 'X'; // MSP version 2
+    ptr[2] = msgType;
+    ptr[3] = 0;
+    memcpy (ptr + 4, &cmd, 2);
+    memcpy (ptr + 6, &payloadSize, 2);
+    memcpy (ptr + 8, payload, payloadSize);
+    checksum2 = crc8_dvb_s2_update(0, ptr+3, payloadSize+5);
+    ptr[8+payloadSize] =  checksum2;
+
+    dataSize = payloadSize;
+    cmdMSP = cmd;
+    mspVersion = MSP_V2_NATIVE;
+    cmdFlags = 0;
+
+    c_state = MSP_COMMAND_READY_TO_SEND;
+
 }
 
 MSP_Packet::~MSP_Packet()
 {
     delete ptr;
+}
+
+bool MSP_Packet::SetMessageType (mspMessageType_e mType)
+{
+    if (ptr == nullptr) return false;
+    ptr[2] = mType;
+    return true;
+}
+
+uint8_t MSP_Packet::crc8_dvb_s2_update(uint8_t crc, const void *data, uint32_t length)
+{
+    const uint8_t *p = (const uint8_t *)data;
+    const uint8_t *pend = p + length;
+
+    for (; p != pend; p++) {
+        crc = MSP_Packet::crc8_dvb_s2(crc, *p);
+    }
+    return crc;
 }
 
 uint8_t MSP_Packet::crc8_dvb_s2(uint8_t crc, unsigned char a)
@@ -32,10 +64,27 @@ uint8_t MSP_Packet::crc8_dvb_s2(uint8_t crc, unsigned char a)
     return crc;
 }
 
-
-int MSP_Packet::AddBytes (uint8_t _buff, int _lenght)
+mspState_e MSP_Packet::GetStatus()
 {
-    for (int i = 0; i<_lenght;i++)
+    return c_state;
+}
+
+uint16_t MSP_Packet::GetPacketStream (uint8_t * buf)
+{
+    if (ptr == nullptr) return 0;
+    buf = ptr;
+    return dataSize + 9;
+}
+
+
+int MSP_Packet::AddRcvBytes (uint8_t *_buff, int _lenght)
+{
+    if ((c_state == MSP_COMMAND_RECEIVED ) || (c_state == MSP_COMMAND_READY_TO_SEND)) return 0;
+
+    bool exitFlag = false;
+    int i = 0;
+    while ((i++ != _lenght) && (!exitFlag))
+    //for (int i = 0; i<_lenght;i++)
     {
         uint8_t c = _buff [i];
         
@@ -49,34 +98,19 @@ int MSP_Packet::AddBytes (uint8_t _buff, int _lenght)
 
         case MSP_HEADER_START:  // Waiting for 'M' (MSPv1 / MSPv2_over_v1) or 'X' (MSPv2 native)
             switch (c) {
-                case 'M':
-                    c_state = MSP_HEADER_M;
-                    mspVersion = MSP_V1;
-                    break;
                 case 'X':
                     c_state = MSP_HEADER_X;
                     mspVersion = MSP_V2_NATIVE;
                     break;
                 default:
                     c_state = MSP_IDLE;
+                    exitFlag = true;
                     break;
             }
             break;
 
-        case MSP_HEADER_M:      // Waiting for '<'
-            if (c == '<') {
-                offset = 0;
-                checksum1 = 0;
-                checksum2 = 0;
-                c_state = MSP_HEADER_V1;
-            }
-            else {
-                c_state = MSP_IDLE;
-            }
-            break;
-
         case MSP_HEADER_X:
-            if (c == '<') {
+            if ((c == '<') || (c == '>')) {
                 offset = 0;
                 checksum2 = 0;
                 mspVersion = MSP_V2_NATIVE;
@@ -84,117 +118,46 @@ int MSP_Packet::AddBytes (uint8_t _buff, int _lenght)
             }
             else {
                 c_state = MSP_IDLE;
-            }
-            break;
-
-        case MSP_HEADER_V1:     // Now receive v1 header (size/cmd), this is already checksummable
-            inBuf[offset++] = c;
-            checksum1 ^= c;
-            if (offset == sizeof(mspHeaderV1_t)) {
-                mspHeaderV1_t * hdr = (mspHeaderV1_t *)&inBuf[0];
-                // Check incoming buffer size limit
-                if (hdr->size > MSP_PORT_INBUF_SIZE) {
-                    c_state = MSP_IDLE;
-                }
-                else if (hdr->cmd == MSP_V2_FRAME_ID) {
-                    // MSPv1 payload must be big enough to hold V2 header + extra checksum
-                    if (hdr->size >= sizeof(mspHeaderV2_t) + 1) {
-                        mspVersion = MSP_V2_OVER_V1;
-                        c_state = MSP_HEADER_V2_OVER_V1;
-                    }
-                    else {
-                        c_state = MSP_IDLE;
-                    }
-                }
-                else {
-                    dataSize = hdr->size;
-                    cmdMSP = hdr->cmd;
-                    cmdFlags = 0;
-                    offset = 0;                // re-use buffer
-                    c_state = dataSize > 0 ? MSP_PAYLOAD_V1 : MSP_CHECKSUM_V1;    // If no payload - jump to checksum byte
-                }
-            }
-            break;
-
-        case MSP_PAYLOAD_V1:
-            inBuf[offset++] = c;
-            checksum1 ^= c;
-            if (offset == dataSize) {
-                c_state = MSP_CHECKSUM_V1;
-            }
-            break;
-
-        case MSP_CHECKSUM_V1:
-            if (checksum1 == c) {
-                c_state = MSP_COMMAND_RECEIVED;
-            } else {
-                c_state = MSP_IDLE;
-            }
-            break;
-
-        case MSP_HEADER_V2_OVER_V1:     // V2 header is part of V1 payload - we need to calculate both checksums now
-            inBuf[offset++] = c;
-            checksum1 ^= c;
-            checksum2 = MSP_Packet::crc8_dvb_s2(checksum2, c);
-            if (offset == (sizeof(mspHeaderV2_t) + sizeof(mspHeaderV1_t))) {
-                mspHeaderV2_t * hdrv2 = (mspHeaderV2_t *)&inBuf[sizeof(mspHeaderV1_t)];
-                dataSize = hdrv2->size;
-
-                // Check for potential buffer overflow
-                if (hdrv2->size > MSP_PORT_INBUF_SIZE) {
-                    c_state = MSP_IDLE;
-                }
-                else {
-                    cmdMSP = hdrv2->cmd;
-                    cmdFlags = hdrv2->flags;
-                    offset = 0;                // re-use buffer
-                    c_state = dataSize > 0 ? MSP_PAYLOAD_V2_OVER_V1 : MSP_CHECKSUM_V2_OVER_V1;
-                }
-            }
-            break;
-
-        case MSP_PAYLOAD_V2_OVER_V1:
-            checksum2 = MSP_Packet::crc8_dvb_s2(checksum2, c);
-            checksum1 ^= c;
-            inBuf[offset++] = c;
-
-            if (offset == dataSize) {
-                c_state = MSP_CHECKSUM_V2_OVER_V1;
-            }
-            break;
-
-        case MSP_CHECKSUM_V2_OVER_V1:
-            checksum1 ^= c;
-            if (checksum2 == c) {
-                c_state = MSP_CHECKSUM_V1; // Checksum 2 correct - verify v1 checksum
-            } else {
-                c_state = MSP_IDLE;
+                exitFlag = true;
             }
             break;
 
         case MSP_HEADER_V2_NATIVE:
-            //inBuf[offset++] = c;
+            headerBuff[offset++] = c;
             checksum2 = MSP_Packet::crc8_dvb_s2(checksum2, c);
             if (offset == sizeof(mspHeaderV2_t)) {
-                mspHeaderV2_t * hdrv2 = (mspHeaderV2_t *)&inBuf[0];
+                mspHeaderV2_t * hdrv2 = (mspHeaderV2_t *)&headerBuff[0];
 
                 // Check for potential buffer overflow
-                if (hdrv2->size > MSP_PORT_INBUF_SIZE) {
+                if (hdrv2->size > MSP_MAX_PACKET_SAIZE) {
                     c_state = MSP_IDLE;
+                    exitFlag = true;
                 }
                 else {
                     dataSize = hdrv2->size;
                     cmdMSP = hdrv2->cmd;
                     cmdFlags = hdrv2->flags;
-                    offset = 0;                // re-use buffer
-                    c_state = dataSize > 0 ? MSP_PAYLOAD_V2_NATIVE : MSP_CHECKSUM_V2_NATIVE;
+                    offset = 8;                // re-use buffer
+                    ptr = new uint8_t [dataSize+9];
+                    ptr[0] = '$';
+                    ptr[1] = 'X'; // MSP version 2
+                    //ptr[2] = msgType;
+                    memcpy (ptr + 3, headerBuff, 5);
+                    if (dataSize > 0)
+                    {
+                        c_state = MSP_PAYLOAD_V2_NATIVE;
+                    }
+                    else
+                    {
+                        c_state = MSP_CHECKSUM_V2_NATIVE;
+                    }
                 }
             }
             break;
 
         case MSP_PAYLOAD_V2_NATIVE:
             checksum2 = MSP_Packet::crc8_dvb_s2(checksum2, c);
-            inBuf[offset++] = c;
+            ptr[offset++] = c;
 
             if (offset == dataSize) {
                 c_state = MSP_CHECKSUM_V2_NATIVE;
@@ -204,10 +167,13 @@ int MSP_Packet::AddBytes (uint8_t _buff, int _lenght)
         case MSP_CHECKSUM_V2_NATIVE:
             if (checksum2 == c) {
                 c_state = MSP_COMMAND_RECEIVED;
+                ptr[8+dataSize] =  checksum2;
             } else {
                 c_state = MSP_IDLE;
             }
+            exitFlag = true;
             break;
         }
     }
+    return i;
 }
