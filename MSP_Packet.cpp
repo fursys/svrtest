@@ -4,6 +4,7 @@
 MSP_Packet::MSP_Packet ()
 {
     ptr = nullptr;
+    c_state = MSP_IDLE;
 }
 
 MSP_Packet::MSP_Packet (uint16_t cmd, uint8_t * payload, uint16_t payloadSize, mspMessageType_e msgType)
@@ -69,7 +70,7 @@ mspState_e MSP_Packet::GetStatus()
     return c_state;
 }
 
-uint16_t MSP_Packet::GetPacketStream (uint8_t * buf)
+uint16_t MSP_Packet::GetPacketStream (uint8_t *& buf)
 {
     if (ptr == nullptr) return 0;
     buf = ptr;
@@ -83,7 +84,7 @@ int MSP_Packet::AddRcvBytes (uint8_t *_buff, int _lenght)
 
     bool exitFlag = false;
     int i = 0;
-    while ((i++ != _lenght) && (!exitFlag))
+    while ((i != _lenght) && (!exitFlag))
     //for (int i = 0; i<_lenght;i++)
     {
         uint8_t c = _buff [i];
@@ -174,6 +175,7 @@ int MSP_Packet::AddRcvBytes (uint8_t *_buff, int _lenght)
             exitFlag = true;
             break;
         }
+        i++;
     }
     return i;
 }

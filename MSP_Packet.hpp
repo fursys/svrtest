@@ -78,7 +78,7 @@ class MSP_Packet
         ~MSP_Packet();
 
         mspState_e GetStatus();
-        uint16_t GetPacketStream (uint8_t * buf);
+        uint16_t GetPacketStream (uint8_t *& buf);
         bool SetMessageType (mspMessageType_e mType);
         int AddRcvBytes (uint8_t * _buff, int _lenght);
 

@@ -4,14 +4,22 @@
 //#include "drone_sockets.hpp"
 #include <thread>
 #include "NetServer.hpp"
+#include <iomanip>
+
+SafeQueue<MSP_Packet> rcvQueue;
+std::thread mspReceiver;
+
+bool exitflag = false;
+void MSPReceiverProc ();
 
 
 int main() {
 
     //NetStartServer();
+    mspReceiver = std::thread(MSPReceiverProc);
+
     NetServer * srv = new NetServer();
-    
-    bool exitflag = false;
+    srv->SetRcvQueue(&rcvQueue);
 
     while (!exitflag)
     {
@@ -29,6 +37,34 @@ int main() {
         }
     }
     delete (srv);
-    
+    rcvQueue.push (new MSP_Packet());
+    mspReceiver.join();
     return 0;
+}
+
+void MSPReceiverProc ()
+{
+    MSP_Packet * msg;
+    uint8_t * buff;
+    uint16_t len;
+    //std::cout << "MSP Receiver proc" << std::endl;
+    while (!exitflag)
+    {
+        msg = rcvQueue.pop();
+        len = msg->GetPacketStream(buff);
+        if (len >0)
+        {
+
+            // Hex print and restore default afterwards.
+            std::ios cout_state(nullptr);
+            cout_state.copyfmt(std::cout);
+            std::cout << std::hex << std::setfill('0') << std::setw(2);
+            for (size_t i = 0; i < len; ++i)
+                std::cout << (int) buff[i] << " ";
+            std::cout << std::endl;
+            std::cout.copyfmt(cout_state);
+        }
+
+
+    }
 }

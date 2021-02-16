@@ -67,7 +67,7 @@ void NetServer::ConnectorThreadProc()
             //Garbage collection, remove 
             list<NetClientCon*>::iterator p = active_clients_list.begin();
             while (p != active_clients_list.end()) {
-                if ((*p)->Status() == true)
+                if ((*p)->isRunning() == false)
                 {
                     delete (*p);
                     p=active_clients_list.erase(p);
@@ -93,6 +93,7 @@ void NetServer::ConnectorThreadProc()
                 //======================
 
                 NetClientCon * nClient = new NetClientCon (strClientAdress, conn);
+                nClient->SetRcvQueue(rcvMsgQueue);
                 active_clients_list.push_back (nClient);
 
 
@@ -102,4 +103,9 @@ void NetServer::ConnectorThreadProc()
 
     }
     close(ss);
+}
+
+void NetServer::SetRcvQueue (SafeQueue<MSP_Packet> * q)
+{
+    rcvMsgQueue = q;
 }

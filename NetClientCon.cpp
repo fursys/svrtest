@@ -2,6 +2,7 @@
 
 
 
+
 NetClientCon::NetClientCon()
 {
 
@@ -27,7 +28,8 @@ void NetClientCon::ReaderThreadProc ()
     fd_set rfds;
     struct timeval tv;
     int retval, maxfd;
-    char buffer[NET_CLIENT_CON_BUF_SIZE];
+    uint8_t buffer[NET_CLIENT_CON_BUF_SIZE];
+    MSP_Packet * rcvMsg = new MSP_Packet ();
     while(!exitflag) {
         /*Clear the collection of readable file descriptors*/
         FD_ZERO(&rfds);
@@ -69,8 +71,27 @@ void NetClientCon::ReaderThreadProc ()
                 }
                 else 
                 {
-                    //TODO: Proceed received data
-                    printf("%s\n", buffer);
+                    //Proceed received data
+                    int consumed = rcvMsg->AddRcvBytes (buffer,len);
+                    while (consumed < len)
+                    {
+                        len -= consumed;
+                        if (rcvMsg->GetStatus() == MSP_COMMAND_RECEIVED)
+                        {
+                            rcvMsgQueue->push(rcvMsg);
+                            rcvMsg = new MSP_Packet ();
+                        }
+                        consumed = rcvMsg->AddRcvBytes (buffer + consumed,len);
+                        
+                    }
+                    if (rcvMsg->GetStatus() == MSP_COMMAND_RECEIVED)
+                    {
+                        rcvMsgQueue->push(rcvMsg);
+                        rcvMsg = new MSP_Packet ();
+                    }
+
+                    
+                    //printf("%s\n", buffer);
                 }
             }
         }
@@ -79,7 +100,12 @@ void NetClientCon::ReaderThreadProc ()
     //if (selfExitFlag) RemoveActiveClient (cl_params);
 }
 
-bool NetClientCon::Status ()
+bool NetClientCon::isRunning ()
 {
-    return exitflag;
+    return !exitflag;
+}
+
+void NetClientCon::SetRcvQueue (SafeQueue<MSP_Packet> * q)
+{
+    rcvMsgQueue = q;
 }

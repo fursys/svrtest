@@ -11,6 +11,7 @@
 #include <list>
 
 #include "NetClientCon.hpp"
+#include "safequeue.hpp"
 
 #define NET_SERVER_CLIENTS_QUEUE 20
 #define PORT 7000
@@ -24,8 +25,12 @@ class NetServer
         thread NetConnectorThread;
         bool ConnectionExitFlag = false;
 
+        SafeQueue<MSP_Packet> * rcvMsgQueue;
+
         void ConnectorThreadProc();
     public:
     NetServer();
     ~NetServer();
+
+    void SetRcvQueue (SafeQueue<MSP_Packet> * q);
 };

@@ -3,10 +3,11 @@
 #include <cstring>
 #include <string>
 #include <thread>
-#include <queue>
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include "safequeue.hpp"
+#include "MSP_Packet.hpp"
 
 using namespace std;
 
@@ -19,6 +20,7 @@ class NetClientCon
         thread client_thread;
         bool exitflag;
         int conn;
+        SafeQueue<MSP_Packet> * rcvMsgQueue;
 
         void ReaderThreadProc ();
     public:
@@ -26,5 +28,7 @@ class NetClientCon
         NetClientCon (string _address, int conn);
         ~NetClientCon();
 
-        bool Status ();
+        void SetRcvQueue (SafeQueue<MSP_Packet> * q);
+
+        bool isRunning ();
 };
