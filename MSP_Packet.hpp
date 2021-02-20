@@ -1,7 +1,7 @@
 #pragma once
 
 #include <iostream>
-
+#include <unistd.h>
 
 #define MSP_V2_FRAME_ID         255
 #define MSP_MAX_PACKET_SAIZE 255
@@ -58,14 +58,14 @@ class MSP_Packet
     private:
         uint8_t * ptr;
         uint8_t headerBuff[8];
-
+        uint8_t msgType = 0;
         uint_fast16_t offset;
         uint_fast16_t dataSize;
         mspVersion_e mspVersion;
         uint8_t cmdFlags;
         uint16_t cmdMSP;
         uint8_t checksum2;
-
+        int conn;
         mspState_e c_state;
 
         uint8_t crc8_dvb_s2(uint8_t crc, unsigned char a);
@@ -74,6 +74,7 @@ class MSP_Packet
     public:
 
         MSP_Packet ();
+        MSP_Packet (int connection);
         MSP_Packet (uint16_t cmd, uint8_t * payload, uint16_t payloadSize, mspMessageType_e msgType);
         ~MSP_Packet();
 
@@ -81,5 +82,9 @@ class MSP_Packet
         uint16_t GetPacketStream (uint8_t *& buf);
         bool SetMessageType (mspMessageType_e mType);
         int AddRcvBytes (uint8_t * _buff, int _lenght);
+        uint16_t GetCommand();
+        void SendPacket();
+        void Clear ();
+        void Fill (uint16_t cmd, uint8_t * payload, uint16_t payloadSize, mspMessageType_e msgType);
 
 };

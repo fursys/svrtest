@@ -5,13 +5,14 @@
 #include <thread>
 #include "NetServer.hpp"
 #include <iomanip>
+#include "msp_protocol.h"
 
 SafeQueue<MSP_Packet> rcvQueue;
 std::thread mspReceiver;
 
 bool exitflag = false;
 void MSPReceiverProc ();
-
+uint8_t mask [2][3] = {{22,59,40},{99,255,255}};
 
 int main() {
 
@@ -51,6 +52,11 @@ void MSPReceiverProc ()
     while (!exitflag)
     {
         msg = rcvQueue.pop();
+
+
+
+
+
         len = msg->GetPacketStream(buff);
         if (len >0)
         {
@@ -63,6 +69,27 @@ void MSPReceiverProc ()
                 std::cout << (int) buff[i] << " ";
             std::cout << std::endl;
             std::cout.copyfmt(cout_state);
+        }
+
+        
+        switch (msg->GetCommand())
+        {
+            case MSP2_DRONE_VIDEO_PAUSE:
+                break;
+            case MSP2_DRONE_VIDEO_PLAY:
+                break;
+            case MSP2_DRONE_GET_MASK_PARAMS:
+                msg->Clear();
+                msg->Fill (MSP2_DRONE_GET_MASK_PARAMS, (uint8_t *) mask, sizeof (mask), MSP_MSG_TYPE_RESPONCE);
+                msg->SendPacket();
+                break;
+            case MSP2_DRONE_SET_MASK_PARAMS:
+                break;
+            case MSP2_DRONE_SET_RC_CHANNELS:
+                break;
+            default:
+                std::cout << "Unknown command received!" << endl;
+                break;
         }
 
 

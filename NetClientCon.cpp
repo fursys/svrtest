@@ -12,6 +12,7 @@ NetClientCon::NetClientCon(string _address, int _conn)
     address = _address;
     conn = _conn;
     client_thread = std::thread(&NetClientCon::ReaderThreadProc, this);
+    exitflag = false;
 }
 NetClientCon::~NetClientCon()
 {
@@ -29,7 +30,7 @@ void NetClientCon::ReaderThreadProc ()
     struct timeval tv;
     int retval, maxfd;
     uint8_t buffer[NET_CLIENT_CON_BUF_SIZE];
-    MSP_Packet * rcvMsg = new MSP_Packet ();
+    MSP_Packet * rcvMsg = new MSP_Packet (conn);
     while(!exitflag) {
         /*Clear the collection of readable file descriptors*/
         FD_ZERO(&rfds);
@@ -79,7 +80,7 @@ void NetClientCon::ReaderThreadProc ()
                         if (rcvMsg->GetStatus() == MSP_COMMAND_RECEIVED)
                         {
                             rcvMsgQueue->push(rcvMsg);
-                            rcvMsg = new MSP_Packet ();
+                            rcvMsg = new MSP_Packet (conn);
                         }
                         consumed = rcvMsg->AddRcvBytes (buffer + consumed,len);
                         
@@ -87,7 +88,7 @@ void NetClientCon::ReaderThreadProc ()
                     if (rcvMsg->GetStatus() == MSP_COMMAND_RECEIVED)
                     {
                         rcvMsgQueue->push(rcvMsg);
-                        rcvMsg = new MSP_Packet ();
+                        rcvMsg = new MSP_Packet (conn);
                     }
 
                     

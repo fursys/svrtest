@@ -6,27 +6,16 @@ MSP_Packet::MSP_Packet ()
     ptr = nullptr;
     c_state = MSP_IDLE;
 }
+MSP_Packet::MSP_Packet (int connection)
+{
+    ptr = nullptr;
+    c_state = MSP_IDLE;
+    conn = connection;
+}
 
 MSP_Packet::MSP_Packet (uint16_t cmd, uint8_t * payload, uint16_t payloadSize, mspMessageType_e msgType)
 {
-    ptr = new uint8_t [payloadSize + 9];
-    ptr[0] = '$';
-    ptr[1] = 'X'; // MSP version 2
-    ptr[2] = msgType;
-    ptr[3] = 0;
-    memcpy (ptr + 4, &cmd, 2);
-    memcpy (ptr + 6, &payloadSize, 2);
-    memcpy (ptr + 8, payload, payloadSize);
-    checksum2 = crc8_dvb_s2_update(0, ptr+3, payloadSize+5);
-    ptr[8+payloadSize] =  checksum2;
-
-    dataSize = payloadSize;
-    cmdMSP = cmd;
-    mspVersion = MSP_V2_NATIVE;
-    cmdFlags = 0;
-
-    c_state = MSP_COMMAND_READY_TO_SEND;
-
+    MSP_Packet::Fill (cmd, payload, payloadSize, msgType);
 }
 
 MSP_Packet::~MSP_Packet()
@@ -116,6 +105,7 @@ int MSP_Packet::AddRcvBytes (uint8_t *_buff, int _lenght)
                 checksum2 = 0;
                 mspVersion = MSP_V2_NATIVE;
                 c_state = MSP_HEADER_V2_NATIVE;
+                msgType = c;
             }
             else {
                 c_state = MSP_IDLE;
@@ -142,7 +132,7 @@ int MSP_Packet::AddRcvBytes (uint8_t *_buff, int _lenght)
                     ptr = new uint8_t [dataSize+9];
                     ptr[0] = '$';
                     ptr[1] = 'X'; // MSP version 2
-                    //ptr[2] = msgType;
+                    ptr[2] = msgType;
                     memcpy (ptr + 3, headerBuff, 5);
                     if (dataSize > 0)
                     {
@@ -178,4 +168,42 @@ int MSP_Packet::AddRcvBytes (uint8_t *_buff, int _lenght)
         i++;
     }
     return i;
+}
+
+uint16_t MSP_Packet::GetCommand()
+{
+    return cmdMSP;
+}
+
+void MSP_Packet::Clear ()
+{
+    delete ptr;
+    c_state = MSP_IDLE;
+}
+
+
+void MSP_Packet::Fill (uint16_t cmd, uint8_t * payload, uint16_t payloadSize, mspMessageType_e msgType)
+{
+    ptr = new uint8_t [payloadSize + 9];
+    ptr[0] = '$';
+    ptr[1] = 'X'; // MSP version 2
+    ptr[2] = msgType;
+    ptr[3] = 0;
+    memcpy (ptr + 4, &cmd, 2);
+    memcpy (ptr + 6, &payloadSize, 2);
+    if (payloadSize > 0) memcpy (ptr + 8, payload, payloadSize);
+    checksum2 = crc8_dvb_s2_update(0, ptr+3, payloadSize+5);
+    ptr[8+payloadSize] =  checksum2;
+
+    dataSize = payloadSize;
+    cmdMSP = cmd;
+    mspVersion = MSP_V2_NATIVE;
+    cmdFlags = 0;
+
+    c_state = MSP_COMMAND_READY_TO_SEND;
+}
+
+void MSP_Packet::SendPacket()
+{
+    int len = write (conn, ptr, dataSize+9);
 }
